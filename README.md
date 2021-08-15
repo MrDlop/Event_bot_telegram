@@ -1,6 +1,6 @@
 # Event bot
 
-Telegram bot for sending events
+# # Telegram bot for sending events
 
 
 
