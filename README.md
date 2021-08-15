@@ -1,4 +1,4 @@
 # Event bot
 config.py - Telegram your token
 
-![preview](preview.gif)"# Event_bot_telegram" 
+![preview](preview.gif)
