@@ -1,11 +1,14 @@
 # Event bot
 
-# # Telegram bot for sending events
+Telegram bot for sending events
 
+# Settings
 
+config.py - File to store your token
 
-config.py - Telegram your token
+config.json - Google Sheets Connection File
 
+# Preview
 ![preview](preview.gif)
 
-by MrDlop
+# By MrDlop
