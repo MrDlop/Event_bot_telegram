@@ -1,414 +1,401 @@
 import time
-
-from telegram import ReplyKeyboardMarkup
-
+import telebot
 import config
 import json
 from datetime import date
 from datetime import datetime
-import logging
-from telegram.ext import Application, MessageHandler, filters, CommandHandler, ConversationHandler
-from data import db_session, users, user_types, offers, event_types, events
 
-db_session.global_init("databases/db.db")
+# telegram
 
-# logging.basicConfig(
-#     format='%(asctime)s - %(name)s - %(levelname)s - %(update, context)s', level=logging.DEBUG
-# )
-#
-# logger = logging.getLogger(__name__)
+bot = telebot.TeleBot(config.TOKEN)
 
-#  init keyboard
-keyboard_start = ReplyKeyboardMarkup([
-    ['Мероприятия'],
-    ['Предложить мероприятие']
-], one_time_keyboard=False)
-keyboard_admin_0 = ReplyKeyboardMarkup([
-    ['Выложить мероприятие'],
-    ['Добавить админа'],
-    ['Удалить админа'],
-    ['Рассылка'],
-    ['Ответить'],
-    ['Реклама'],
-    ['Мероприятия']
-], one_time_keyboard=False)
-keyboard_admin_1 = ReplyKeyboardMarkup([
-    ['Выложить мероприятие'],
-    ['Реклама'],
-    ['Мероприятия']
-], one_time_keyboard=False)
-keyboard_type = ReplyKeyboardMarkup([
-    ['Предстоящее'],
-    ['Текущее'],
-    ['Прошедшее'],
-    ['Назад']
-], one_time_keyboard=False)
+with open("config.json", "r") as f:
+    config_json = json.load(f)
+
+keyboard_start = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add('Мероприятия').row(
+    'Предложить мероприятие')
+keyboard_chief = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add('Выложить мероприятие').row('Добавить '
+                                                                                                         'админа',
+                                                                                                         'Удалить '
+                                                                                                         'админа',
+                                                                                                         'Рассылка',
+                                                                                                         'Ответить',
+                                                                                                         'Реклама',
+                                                                                                         'Мероприятия')
+keyboard_admin = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add('Выложить мероприятие').row('Реклама',
+                                                                                                         'Мероприятия')
+keyboard_type = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add('Предстоящее').add('Текущее') \
+    .add('Прошедшее').add('Назад')
 help_message = "/start - запуск бота\n/mailing - включение/выключение рассылки в данном чате\n/mailing_group - " \
                "включение/выключение рассылки в группе\n/help - получение " \
                "информации о боте \n /ad - по поводу рекламы"
 
 
-# async def forward(string):
-#     t = 0
-#     for i_2 in config_json['id']:
-#         if t > 20:
-#             t = 0
-#             time.sleep(30)
-#         if config_json['id'][i_2]:
-#             try:
-#                 bot.send_message(i_2, string)
-#                 t += 1
-#             except:
-#                 config_json['id'][i_2] = False
-#                 continue
+def forward(string):
+    t = 0
+    for i_2 in config_json['id']:
+        if t > 20:
+            t = 0
+            time.sleep(30)
+        if config_json['id'][i_2]:
+            try:
+                bot.send_message(i_2, string)
+                t += 1
+            except:
+                config_json['id'][i_2] = False
+                continue
 
-async def mailing(update, context):
-    db_sess = db_session.create_session()
-    sensor_all = db_sess.query(users.User).filter(users.User.telegram_id == str(update.message.chat_id)).all()
-    if len(sensor_all) == 0:
-        db_sess = db_session.create_session()
-        new_chat = users.User()
-        new_chat.type = "user"
-        new_chat.telegram_id = str(update.message.chat_id)
-        new_chat.distribution = 1
-        db_sess.add(new_chat)
-        db_sess.commit()
-        db_sess.close()
-        await update.message.reply_text("On")
-        return ConversationHandler.END
-    sensor = sensor_all[0].distribution
-    if sensor:
-        sensor_all[0].distribution = not sensor
-        await update.message.reply_text("Off")
+
+def relevanceEvent(dateEvent):
+    return date(datetime.now().year, datetime.now().month, datetime.now().day) > dateEvent
+
+
+def relevanceEvent2(number, day):
+    a = relevanceEvent(date(
+        int(((day.partition('.')[2]).partition('.')[2]).partition('-')[0]),
+        int((day.partition('.')[2]).partition('.')[0]),
+        int(day.partition('.')[0])))
+    b = relevanceEvent(date(
+        int(((((day.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+            '.')[2]).partition('.')[2]),
+        int(((((day.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+            '.')[2]).partition('.')[0]),
+        int((((day.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+            '.')[0])))
+    if not a and not b:
+        config_json['event'][number]['status'] = 'Предстоящее'
+    elif a and not b:
+        config_json['event'][number]['status'] = 'Текущее'
     else:
-        sensor_all[0].distribution = not sensor
-        await update.message.reply_text("On")
-    db_sess.commit()
-    db_sess.close()
+        config_json['event'][number]['status'] = 'Прошедшее'
 
 
-async def mailing_group(update, context):
-    await update.message.reply_text("Введите id группы", reply_markup=keyboard_start)
-    return 1
-
-
-async def mailing_group_add(update, context):
-    try:
-        await update.message.reply_text("Введите id группы")
-        context.bot.send_message(str(update.message.text), "LP bot connected")
-        db_sess = db_session.create_session()
-        sensor_all = db_sess.query(users.User).filter(users.User.telegram_id == str(update.message.text)).all()
-        if len(sensor_all) == 0:
-            db_sess = db_session.create_session()
-            new_chat = users.User()
-            new_chat.type = "user"
-            new_chat.telegram_id = str(update.message.text)
-            new_chat.distribution = 1
-            db_sess.add(new_chat)
-            db_sess.commit()
-            db_sess.close()
-            await update.message.reply_text("On")
-            return ConversationHandler.END
-        sensor = sensor_all[0].distribution
-        if sensor:
-            sensor_all[0].distribution = bool(1 - sensor)
-            await update.message.reply_text("Off")
+@bot.message_handler(commands=['mailing'])
+def mailing(message):
+    if not str(message.chat.id) in config_json['id']:
+        config_json['id'][str(message.chat.id)] = True
+        with open("config.json", "w") as file:
+            json.dump(config_json, file)
+        bot.send_message(message.chat.id, "On", reply_markup=keyboard_start)
+    else:
+        if config_json['id'][str(message.chat.id)]:
+            config_json['id'][str(message.chat.id)] = False
+            with open("config.json", "w") as file:
+                json.dump(config_json, file)
+            bot.send_message(message.chat.id, "Off", reply_markup=keyboard_start)
         else:
-            sensor_all[0].distribution = bool(1 - sensor)
-            await update.message.reply_text("On")
-        db_sess.close()
-
-    except:
-        await update.message.reply_text("Данные введены неккоректно")
-    return ConversationHandler.END
+            config_json['id'][str(message.chat.id)] = True
+            with open("config.json", "w") as file:
+                json.dump(config_json, file)
+            bot.send_message(message.chat.id, "On", reply_markup=keyboard_start)
 
 
-async def start_handler(update, context):
-    await update.message.reply_text("Привет, это Life-Programming-bot", reply_markup=keyboard_start)
-    return "menu"
+@bot.message_handler(commands=['mailing_group'])
+def mailing_group(message):
+    bot.send_message(message.chat.id, "Введите id группы")
+    bot.register_next_step_handler(message, mailing_group_add)
 
 
-async def help_command(update, context):
-    db_sess = db_session.create_session()
-
-    type_user = db_sess.query(users.User).filter(users.User.telegram_id == str(update.message.chat_id)).first().type
-    db_sess.close()
-    if type_user == 'user':
-        await update.message.reply_text(help_message)
-    elif type_user == 'admin_0':
-        await update.message.reply_text(help_message + '\n' + "/special - спец команды"
-                                                              "\n/update_json - обновление config.json"
-                                                              "\n/update_event - обновление "
-                                                              "актуальности событий")
-    elif type_user == 'admin_1':
-        await update.message.reply_text(help_message + '\n' + "/special - спец команды"
-                                                              "\n/update_json - обновление config.json"
-                                                              "\n/update_event - обновление "
-                                                              "актуальности событий")
-
-
-# async def special(update, context):
-#     if str(update.message.chat_id) in config_json['id_admin']:
-#         if (str(update.message.chat_id)) in config_json['id_chief']:
-#             await update.message.reply_text('Выберите категорию:', reply_markup=keyboard_chief)
-#             bot.register_next_step_handler(message, chief)
-#         else:
-#             await update.message.reply_text('Выберите категорию:', reply_markup=keyboard_admin)
-#             bot.register_next_step_handler(message, admin)
-#     else:
-#         await update.message.reply_text("Error 1: Вы не имеете доступа к данной команде")
-
-
-# async def admin(update, context):
-#     if message.text.lower() == "выложить мероприятие":
-#         await update.message.reply_text("Введите название мероприятия")
-#         bot.register_next_step_handler(message, setEvent_name)
-#     elif message.text.lower() == 'мероприятия':
-#         for event_i in config_json['admin']['event']:
-#             await update.message.reply_text(config_json['admin']['event'][event_i])
-
-
-# async def chief(update, context):
-#     if message.text.lower() == "добавить админа":
-#         await update.message.reply_text("Введите id")
-#         bot.register_next_step_handler(message, setAdmin)
-#     elif message.text.lower() == "удалить админа":
-#         await update.message.reply_text("Введите id")
-#         bot.register_next_step_handler(message, delAdmin)
-#     elif message.text.lower() == "выложить мероприятие":
-#         await update.message.reply_text("Введите название мероприятия")
-#         bot.register_next_step_handler(message, setEvent_name)
-#     elif message.text.lower() == "рассылка":
-#         await update.message.reply_text("Введите текст рассылки")
-#         bot.register_next_step_handler(message, distribution)
-#     elif message.text.lower() == 'ответить':
-#         await update.message.reply_text("Введите id")
-#         bot.register_next_step_handler(message, reply2)
-#     elif message.text.lower() == 'реклама':
-#         for ad_i in config_json['admin']['ad']:
-#             await update.message.reply_text(config_json['admin']['ad'][ad_i])
-#     elif message.text.lower() == 'мероприятия':
-#         for event_i in config_json['admin']['event']:
-#             await update.message.reply_text(config_json['admin']['event'][event_i])
-
-
-# async def reply2(update, context):
-#     await update.message.reply_text("Введите сообщение")
-#     bot.register_next_step_handler(message, reply3, message.text)
-
-
-# async def reply3(message, messId):
-#     try:
-#         bot.send_message(messId, message.text)
-#         await update.message.reply_text("Ok")
-#     except:
-#         await update.message.reply_text("Неккоректные данные")
-
-
-# async def distribution(update, context):
-#     forward(message.text)
-
-
-# async def setEvent_name(update, context):
-#     number = str(len(config_json['event']))
-#     config_json['event'][number] = {'name': "", "type": "", "date": "", "description": "", "link": ""}
-#     config_json['event'][number]['name'] = message.text
-#     await update.message.reply_text("Введите тип мероприятия")
-#     bot.register_next_step_handler(message, setEvent_type, str(int(number)))
-#
-#
-# async def setEvent_type(message, number):
-#     config_json['event'][number]['type'] = message.text
-#     await update.message.reply_text("Введите дату мероприятия")
-#     bot.register_next_step_handler(message, setEvent_date, number)
-#
-#
-# async def setEvent_date(message, number):
-#     try:
-#         if len(str(((message.text.partition('.')[2]).partition('.')[2]).partition('-')[0])) != 4:
-#             raise
-#         if not date(
-#                 int(((message.text.partition('.')[2]).partition('.')[2]).partition('-')[0]),
-#                 int((message.text.partition('.')[2]).partition('.')[0]),
-#                 int(message.text.partition('.')[0])) < date(
-#             int(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
-#                 '.')[2]).partition('.')[2]),
-#             int(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
-#                 '.')[2]).partition('.')[0]),
-#             int((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
-#                 '.')[0])):
-#             raise
-#         if len(str(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
-#                 '.')[2]).partition('.')[2])) != 4:
-#             raise
-#         config_json['event'][number]['date'] = message.text
-#         relevanceEvent2(number, message.text)
-#
-#         await update.message.reply_text("Введите ссылку на мероприятие")
-#         bot.register_next_step_handler(message, setEvent_link, number)
-#     except:
-#         await update.message.reply_text("Неккоректные данные, введите снова")
-#         bot.register_next_step_handler(message, setEvent_date, number)
-#
-#
-# async def setEvent_link(message, number):
-#     config_json['event'][number]['link'] = message.text
-#     await update.message.reply_text("Введите описание мероприятия")
-#     bot.register_next_step_handler(message, setEvent_description, number)
-#
-#
-# async def setEvent_description(message, number):
-#     config_json['event'][number]['description'] = message.text
-#     with open("config.json", "w") as file:
-#         json.dump(config_json, file)
-#     forward(config_json['event'][number]['name'] + '\nТип: ' + config_json['event'][number]['type'] + '\nСтатус: ' + \
-#             config_json['event'][number]['status'] + '\nПроходит ' + config_json['event'][number][
-#                 'date'] + '\nОписание: ' + config_json['event'][number]['description'] + '\nПодробнее: ' + \
-#             config_json['event'][number]['link'])
-#
-#
-# async def delAdmin(update, context):
-#     if message.text in config_json['id_admin']:
-#         config_json['id_admin'][str(message.text)] = False
-#         with open("config.json", "w") as file:
-#             json.dump(config_json, file)
-#         await update.message.reply_text("Ok")
-#
-#
-# async def setAdmin(update, context):
-#     try:
-#         bot.send_message(message.text, "Test admin in LP bot")
-#         config_json['id_admin'][str(message.text)] = True
-#         with open("config.json", "w") as file:
-#             json.dump(config_json, file)
-#         await update.message.reply_text("Ok")
-#     except:
-#         await update.message.reply_text("Error")
-#         await update.message.reply_text("Введите id")
-#         bot.register_next_step_handler(message, setAdmin)
-#
-#
-
-
-async def ad(update, context):
-    await update.message.reply_text("Введите текст рекламы")
-    return 1
-
-
-async def ad_in(update, context):
-    db_sess = db_session.create_session()
-    offer = offers.Offer()
-    offer.is_event = 0
-    offer.name = update.message.text
-    offer.ref = update.message.chat_id
-    db_sess.add(offer)
-    db_sess.commit()
-    db_sess.close()
-    await update.message.reply_text("Ваше предложение проходит проверку")
-    return ConversationHandler.END
-
-
-async def menu(update, context):
-    if update.message.text.lower() == 'предложить мероприятие':
-        await update.message.reply_text("Введите название мероприятия")
-        return "name"
-    elif update.message.text.lower() == 'мероприятия':
-        await update.message.reply_text("Выберите тип", reply_markup=keyboard_type)
-        return "typeEvent"
-
-
-async def typeEvent(update, context):
-    if update.message.text.lower() == 'предстоящее':
-        i = 0
-        pass
-    # if message.text.lower() == 'предстоящее' or message.text.lower() == 'текущее' \
-    #         or message.text.lower() == 'прошедшее':
-    #     for i2 in config_json['event']:
-    #         if str(config_json['event'][i2]['status']) == str(message.text):
-    #             await update.message.reply_text(
-    #                 config_json['event'][i2]['name'] + '\nТип: ' + config_json['event'][i2][
-    #                     'type'] + '\nСтатус: ' +
-    #                 config_json['event'][i2]['status'] + '\nПроходит ' + config_json['event'][i2][
-    #                     'date'] + '\nОписание: ' + config_json['event'][i2][
-    #                     'description'] + '\nПодробнее: ' +
-    #                 config_json['event'][i2]['link'])
-    #     bot.register_next_step_handler(message, typeEvent)
-    # elif message.text.lower() == "назад":
-    #     await update.message.reply_text("Выберите пункт", reply_markup=keyboard_start)
-    # else:
-    #     await update.message.reply_text("Выберите тип", reply_markup=keyboard_type)
-    #     bot.register_next_step_handler(message, typeEvent)
-
-
-async def name(update, context):
+def mailing_group_add(message):
     try:
-        await update.message.reply_text("Введите ссылку на мероприятие")
-        context.user_data['name'] = update.message.text
-        return "link"
+        bot.send_message(str(message.text), "LP bot connected")
+        if not str(message.text) in config_json['id']:
+            config_json['id'][str(message.text)] = True
+            with open("config.json", "w") as file:
+                json.dump(config_json, file)
+            bot.send_message(message.chat.id, "On", reply_markup=keyboard_start)
+        else:
+            if config_json['id'][str(message.text)]:
+                config_json['id'][str(message.text)] = False
+                with open("config.json", "w") as file:
+                    json.dump(config_json, file)
+                    bot.send_message(message.chat.id, "Off", reply_markup=keyboard_start)
+            else:
+                config_json['id'][str(message.text)] = True
+                with open("config.json", "w") as file:
+                    json.dump(config_json, file)
+                bot.send_message(message.chat.id, "On", reply_markup=keyboard_start)
     except:
-        await update.message.reply_text("Данные введены неккоректно")
-        await update.message.reply_text("Введите название мероприятия")
-        return "name"
+        bot.send_message(message.chat.id, "Данные введены неккоректно")
 
 
-async def link(update, context):
+@bot.message_handler(commands=['start'])
+def start_handler(message):
+    bot.send_message(message.chat.id, "Привет, это Life-Programming-bot", reply_markup=keyboard_start)
+
+
+@bot.message_handler(commands=['ad'])
+def ad(message):
+    bot.send_message(message.chat.id, "Введите текст рекламы")
+    bot.register_next_step_handler(message, ad_in)
+
+
+def ad_in(message):
+    for i_ad_in in config_json['id_chief']:
+        bot.send_message(i_ad_in, "Реклама" + '\n' + str(message.chat.id) + '\n' + message.text)
+    config_json['admin']['event'][len(config_json['admin']['ad'])] = "Реклама" + '\n' + str(
+        message.chat.id) + '\n' + message.text
+    with open("config.json", "w") as file:
+        json.dump(config_json, file)
+    bot.send_message(message.chat.id, "Ваше предложение проходит проверку")
+
+
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    if str(message.chat.id) in config_json['id_chief']:
+        if config_json['id_chief'][str(message.chat.id)]:
+            bot.send_message(message.chat.id, help_message + '\n' + "/special - спец команды (уровень доступа "
+                                                                    "1)\n/update_json - обновление "
+                                                                    "config.json\n/update_event - обновление "
+                                                                    "актуальности событий")
+        elif str(message.chat.id) in config_json['id_admin']:
+            if config_json['id_admin'][str(message.chat.id)]:
+                bot.send_message(message.chat.id, help_message + '\n' + "/special - спец.команды (уровень доступа "
+                                                                        "2)\n/update_json - обновление "
+                                                                        "config.json\n/update_event - обновление "
+                                                                        "актуальности событий")
+            else:
+                bot.send_message(message.chat.id, help_message)
+        else:
+            bot.send_message(message.chat.id, help_message)
+    elif str(message.chat.id) in config_json['id_admin']:
+        if config_json['id_admin'][str(message.chat.id)]:
+            bot.send_message(message.chat.id, help_message + '\n' + "/special - спец.команды (уровень доступа "
+                                                                    "2)\n/update_json - обновление "
+                                                                    "config.json\n/update_event - обновление "
+                                                                    "актуальности событий")
+        else:
+            bot.send_message(message.chat.id, help_message)
+    else:
+        bot.send_message(message.chat.id, help_message)
+
+
+@bot.message_handler(commands=['update_json'])
+def update_json(message):
+    global config_json
+    with open("config.json", "r") as f:
+        config_json = json.load(f)
+    bot.send_message(message.chat.id, "Ok")
+
+
+@bot.message_handler(commands=['update_event'])
+def update_event(message):
+    for i in config_json['event']:
+        eventDate = config_json['event'][i]['date']
+        config_json['event'][i]['start'] = relevanceEvent(date(
+            int(((eventDate.partition('.')[2]).partition('.')[2]).partition('-')[0]),
+            int((eventDate.partition('.')[2]).partition('.')[0]),
+            int(eventDate.partition('.')[0])))
+        config_json['event'][i]['end'] = relevanceEvent(date(
+            int(((((eventDate.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[2]).partition('.')[2]),
+            int(((((eventDate.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[2]).partition('.')[0]),
+            int((((eventDate.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[0])))
+    with open("config.json", "w") as file:
+        json.dump(config_json, file)
+    bot.send_message(message.chat.id, "Ok")
+
+
+@bot.message_handler(commands=['special'])
+def special(message):
+    if str(message.chat.id) in config_json['id_admin']:
+        if (str(message.chat.id)) in config_json['id_chief']:
+            bot.send_message(message.chat.id, 'Выберите категорию:', reply_markup=keyboard_chief)
+            bot.register_next_step_handler(message, chief)
+        else:
+            bot.send_message(message.chat.id, 'Выберите категорию:', reply_markup=keyboard_admin)
+            bot.register_next_step_handler(message, admin)
+    else:
+        bot.send_message(message.chat.id, "Error 1: Вы не имеете доступа к данной команде")
+
+
+def admin(message):
+    if message.text.lower() == "выложить мероприятие":
+        bot.send_message(message.chat.id, "Введите название мероприятия")
+        bot.register_next_step_handler(message, setEvent_name)
+    elif message.text.lower() == 'мероприятия':
+        for event_i in config_json['admin']['event']:
+            bot.send_message(message.chat.id, config_json['admin']['event'][event_i])
+
+
+def chief(message):
+    if message.text.lower() == "добавить админа":
+        bot.send_message(message.chat.id, "Введите id")
+        bot.register_next_step_handler(message, setAdmin)
+    elif message.text.lower() == "удалить админа":
+        bot.send_message(message.chat.id, "Введите id")
+        bot.register_next_step_handler(message, delAdmin)
+    elif message.text.lower() == "выложить мероприятие":
+        bot.send_message(message.chat.id, "Введите название мероприятия")
+        bot.register_next_step_handler(message, setEvent_name)
+    elif message.text.lower() == "рассылка":
+        bot.send_message(message.chat.id, "Введите текст рассылки")
+        bot.register_next_step_handler(message, distribution)
+    elif message.text.lower() == 'ответить':
+        bot.send_message(message.chat.id, "Введите id")
+        bot.register_next_step_handler(message, reply2)
+    elif message.text.lower() == 'реклама':
+        for ad_i in config_json['admin']['ad']:
+            bot.send_message(message.chat.id, config_json['admin']['ad'][ad_i])
+    elif message.text.lower() == 'мероприятия':
+        for event_i in config_json['admin']['event']:
+            bot.send_message(message.chat.id, config_json['admin']['event'][event_i])
+
+
+def reply2(message):
+    bot.send_message(message.chat.id, "Введите сообщение")
+    bot.register_next_step_handler(message, reply3, message.text)
+
+
+def reply3(message, messId):
     try:
-        db_sess = db_session.create_session()
-        offer = offers.Offer()
-        offer.is_event = 1
-        offer.name = context.user_data['name']
-        offer.ref = update.message.text
-        db_sess.add(offer)
-        db_sess.commit()
-        db_sess.close()
-        await update.message.reply_text("Мероприятие отправлено на проверку")
-        return ConversationHandler.END
+        bot.send_message(messId, message.text)
+        bot.send_message(message.chat.id, "Ok")
     except:
-        await update.message.reply_text("Данные введены неккоректно")
-        await update.message.reply_text("Введите ссылку на мероприятие")
-        return "link"
+        bot.send_message(message.chat.id, "Неккоректные данные")
 
 
-def main():
-    application = Application.builder().token(config.TOKEN).build()
-
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("mailing", mailing))
-    # application.add_handler(CommandHandler("update_event", update_event))
-    # application.add_handler(CommandHandler("special", special))
-
-    application.add_handler(
-        ConversationHandler(
-            entry_points=[CommandHandler('mailing_group', mailing_group)],
-            states={
-                1: [MessageHandler(filters.TEXT & ~filters.COMMAND, mailing_group_add)]
-            },
-            fallbacks=[CommandHandler('help', help_command)]
-        )
-    )
-    application.add_handler(
-        ConversationHandler(
-            entry_points=[CommandHandler('start', start_handler)],
-            states={
-                "menu": [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
-                "name": [MessageHandler(filters.TEXT & ~filters.COMMAND, name)],
-                "typeEvent": [MessageHandler(filters.TEXT & ~filters.COMMAND, typeEvent)],
-                "link": [MessageHandler(filters.TEXT & ~filters.COMMAND, link)]
-            },
-            fallbacks=[CommandHandler('help', help_command)]
-        )
-    )
-    application.add_handler(
-        ConversationHandler(
-            entry_points=[CommandHandler('ad', ad)],
-            states={
-                1: [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_in)]
-            },
-            fallbacks=[CommandHandler('help', help_command)]
-        )
-    )
-    application.run_polling()
+def distribution(message):
+    forward(message.text)
 
 
-if __name__ == '__main__':
-    main()
+def setEvent_name(message):
+    number = str(len(config_json['event']))
+    config_json['event'][number] = {'name': "", "type": "", "date": "", "description": "", "link": ""}
+    config_json['event'][number]['name'] = message.text
+    bot.send_message(message.chat.id, "Введите тип мероприятия")
+    bot.register_next_step_handler(message, setEvent_type, str(int(number)))
+
+
+def setEvent_type(message, number):
+    config_json['event'][number]['type'] = message.text
+    bot.send_message(message.chat.id, "Введите дату мероприятия")
+    bot.register_next_step_handler(message, setEvent_date, number)
+
+
+def setEvent_date(message, number):
+    try:
+        if len(str(((message.text.partition('.')[2]).partition('.')[2]).partition('-')[0])) != 4:
+            raise
+        if not date(
+                int(((message.text.partition('.')[2]).partition('.')[2]).partition('-')[0]),
+                int((message.text.partition('.')[2]).partition('.')[0]),
+                int(message.text.partition('.')[0])) < date(
+            int(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[2]).partition('.')[2]),
+            int(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[2]).partition('.')[0]),
+            int((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[0])):
+            raise
+        if len(str(((((message.text.partition('.')[2]).partition('.')[2]).partition('-')[2]).partition(
+                '.')[2]).partition('.')[2])) != 4:
+            raise
+        config_json['event'][number]['date'] = message.text
+        relevanceEvent2(number, message.text)
+
+        bot.send_message(message.chat.id, "Введите ссылку на мероприятие")
+        bot.register_next_step_handler(message, setEvent_link, number)
+    except:
+        bot.send_message(message.chat.id, "Неккоректные данные, введите снова")
+        bot.register_next_step_handler(message, setEvent_date, number)
+
+
+def setEvent_link(message, number):
+    config_json['event'][number]['link'] = message.text
+    bot.send_message(message.chat.id, "Введите описание мероприятия")
+    bot.register_next_step_handler(message, setEvent_description, number)
+
+
+def setEvent_description(message, number):
+    config_json['event'][number]['description'] = message.text
+    with open("config.json", "w") as file:
+        json.dump(config_json, file)
+    forward(config_json['event'][number]['name'] + '\nТип: ' + config_json['event'][number]['type'] + '\nСтатус: ' + \
+            config_json['event'][number]['status'] + '\nПроходит ' + config_json['event'][number][
+                'date'] + '\nОписание: ' + config_json['event'][number]['description'] + '\nПодробнее: ' + \
+            config_json['event'][number]['link'])
+
+
+def delAdmin(message):
+    if message.text in config_json['id_admin']:
+        config_json['id_admin'][str(message.text)] = False
+        with open("config.json", "w") as file:
+            json.dump(config_json, file)
+        bot.send_message(message.chat.id, "Ok")
+
+
+def setAdmin(message):
+    try:
+        bot.send_message(message.text, "Test admin in LP bot")
+        config_json['id_admin'][str(message.text)] = True
+        with open("config.json", "w") as file:
+            json.dump(config_json, file)
+        bot.send_message(message.chat.id, "Ok")
+    except:
+        bot.send_message(message.chat.id, "Error")
+        bot.send_message(message.chat.id, "Введите id")
+        bot.register_next_step_handler(message, setAdmin)
+
+
+@bot.message_handler(content_types=['text'])
+def menu(message):
+    if message.text.lower() == 'предложить мероприятие':
+        try:
+            bot.send_message(message.chat.id, "Введите название мероприятия")
+            bot.register_next_step_handler(message, name)
+        except:
+            bot.send_message(message.chat.id, "Данные введены неккоректно")
+    elif message.text.lower() == 'мероприятия':
+        bot.send_message(message.chat.id, "Выберите тип", reply_markup=keyboard_type)
+        bot.register_next_step_handler(message, typeEvent)
+
+
+def typeEvent(message):
+    if message.text.lower() == 'предстоящее' or message.text.lower() == 'текущее' \
+            or message.text.lower() == 'прошедшее':
+        for i2 in config_json['event']:
+            if str(config_json['event'][i2]['status']) == str(message.text):
+                bot.send_message(message.chat.id,
+                                 config_json['event'][i2]['name'] + '\nТип: ' + config_json['event'][i2][
+                                     'type'] + '\nСтатус: ' +
+                                 config_json['event'][i2]['status'] + '\nПроходит ' + config_json['event'][i2][
+                                     'date'] + '\nОписание: ' + config_json['event'][i2][
+                                     'description'] + '\nПодробнее: ' +
+                                 config_json['event'][i2]['link'])
+        bot.register_next_step_handler(message, typeEvent)
+    elif message.text.lower() == "назад":
+        bot.send_message(message.chat.id, "Выберите пункт", reply_markup=keyboard_start)
+    else:
+        bot.send_message(message.chat.id, "Выберите тип", reply_markup=keyboard_type)
+        bot.register_next_step_handler(message, typeEvent)
+
+
+def name(message):
+    try:
+        bot.send_message(message.chat.id, "Введите ссылку на мероприятие")
+        bot.register_next_step_handler(message, link, message.text)
+    except:
+        bot.send_message(message.chat.id, "Данные введены неккоректно")
+        bot.send_message(message.chat.id, "Введите название мероприятия")
+        bot.register_next_step_handler(message, name)
+
+
+def link(message, message_name):
+    try:
+        for il in config_json['id_admin']:
+            if config_json['id_admin'][il]:
+                bot.send_message(il, str(message.chat.id) + '\n' + message_name + '\n' + message.text)
+        config_json['admin']['event'][len(config_json['admin']['event'])] = str(
+            message.chat.id) + '\n' + message_name + '\n' + message.text
+        with open("config.json", "w") as file:
+            json.dump(config_json, file)
+    except:
+        bot.send_message(message.chat.id, "Данные введены неккоректно")
+        bot.send_message(message.chat.id, "Введите ссылку на мероприятие")
+        bot.register_next_step_handler(message, link, message.text)
+
+
+bot.polling()
