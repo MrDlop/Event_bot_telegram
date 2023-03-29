@@ -6,8 +6,6 @@ Telegram bot for sending events
 
 config.py - File to store your token
 
-config.json - Google Sheets Connection File
-
 ## Preview
 ![preview](preview.gif)
 
