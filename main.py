@@ -1,6 +1,6 @@
-import asyncio
 import datetime
 
+import requests
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Application, MessageHandler, filters, CommandHandler, ConversationHandler
 
@@ -233,6 +233,12 @@ async def setEvent_date(update, context):
 
 async def setEvent_link(update, context):
     context.user_data['event'].event = update.message.text
+    await update.message.reply_text("Введите место прохождения мероприятия (online or address)")
+    return "setEvent_address"
+
+
+async def setEvent_address(update, context):
+    context.user_data['event'].address = update.message.text
     await update.message.reply_text("Введите описание мероприятия")
     return "setEvent_description"
 
@@ -300,7 +306,23 @@ async def typeEvent(update, context):
         event = db_sess.query(events.Event).filter(events.Event.status == 0).all()
         db_sess.close()
         for i in event:
-            await update.message.reply_text(str(i))
+            if i.address == 'online':
+                await update.message.reply_text(str(i) + '\nonline')
+            else:
+                await update.message.reply_text(str(i))
+                geocoder_params = {
+                    "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
+                    "geocode": i.address,
+                    "format": "json"}
+                response = requests.get('http://geocode-maps.yandex.ru/1.x/', params=geocoder_params)
+                json_response = response.json()
+                toponym = json_response["response"]["GeoObjectCollection"][
+                    "featureMember"][0]["GeoObject"]
+                toponym_coordinates = toponym["Point"]["pos"]
+                toponym_longitude, toponym_latitude = toponym_coordinates.split(" ")
+                await context.bot.send_photo(chat_id=update.message.chat_id,
+                                             photo='http://static-maps.yandex.ru/1.x/?'
+                                                   'll={toponym_latitude},{toponym_latitude}')
         await update.message.reply_text("Выберите тип", reply_markup=keyboard_type)
         return "typeEvent"
     elif update.message.text.lower() == 'прошедшее':
@@ -406,6 +428,7 @@ def main():
                 "setEvent_type": [MessageHandler(filters.TEXT & ~filters.COMMAND, setEvent_type)],
                 "setEvent_date": [MessageHandler(filters.TEXT & ~filters.COMMAND, setEvent_date)],
                 "setEvent_link": [MessageHandler(filters.TEXT & ~filters.COMMAND, setEvent_link)],
+                "setEvent_address": [MessageHandler(filters.TEXT & ~filters.COMMAND, setEvent_address)],
                 "setEvent_description": [MessageHandler(filters.TEXT & ~filters.COMMAND, setEvent_description)],
                 "distribution": [MessageHandler(filters.TEXT & ~filters.COMMAND, distribution)],
                 "reply2": [MessageHandler(filters.TEXT & ~filters.COMMAND, reply2)],
