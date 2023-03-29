@@ -1,2 +1,2 @@
-pyTelegramBotAPI==3.7.3
-telebot==0.0.3
+sqlalchemy==2.0.7
+telegram==0.0.1
