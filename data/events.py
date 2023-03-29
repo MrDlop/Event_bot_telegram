@@ -15,3 +15,14 @@ class Event(SqlAlchemyBase):
     date_end = sqlalchemy.Column(sqlalchemy.DateTime)
     status = sqlalchemy.Column(sqlalchemy.Boolean)
     link = sqlalchemy.Column(sqlalchemy.String)
+    address = sqlalchemy.Column(sqlalchemy.String)
+
+    def __repr__(self):
+        return f'{self.name}\n' \
+               f'Тип: {self.type}\n' \
+               f'Проходит с{self.date_start} до {self.date_end} \n' \
+               f'Описание: {self.description}\n' \
+               f'Подробнее: {self.link}'
+
+    def __str__(self):
+        return self.__repr__()
