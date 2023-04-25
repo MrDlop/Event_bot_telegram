@@ -106,14 +106,17 @@ async def start_handler(update, context):
 
 async def help_command(update, context):
     db_sess = db_session.create_session()
-    type_user = db_sess.query(users.User).filter(users.User.telegram_id == str(update.message.chat_id)).first().type
-    db_sess.close()
-    if type_user == 'user':
+    try:
+        type_user = db_sess.query(users.User).filter(users.User.telegram_id == str(update.message.chat_id)).first().type
+        db_sess.close()
+        if type_user == 'user':
+            await update.message.reply_text(help_message)
+        elif type_user == 'admin_0':
+            await update.message.reply_text(help_message + '\n' + "/special - спец команды")
+        elif type_user == 'admin_1':
+            await update.message.reply_text(help_message + '\n' + "/special - спец команды")
+    except:
         await update.message.reply_text(help_message)
-    elif type_user == 'admin_0':
-        await update.message.reply_text(help_message + '\n' + "/special - спец команды")
-    elif type_user == 'admin_1':
-        await update.message.reply_text(help_message + '\n' + "/special - спец команды")
 
 
 async def special(update, context):
@@ -314,15 +317,18 @@ async def typeEvent(update, context):
                     "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
                     "geocode": i.address,
                     "format": "json"}
+                print(i.address)
                 response = requests.get('http://geocode-maps.yandex.ru/1.x/', params=geocoder_params)
+                print(response.json())
                 json_response = response.json()
                 toponym = json_response["response"]["GeoObjectCollection"][
                     "featureMember"][0]["GeoObject"]
                 toponym_coordinates = toponym["Point"]["pos"]
+
                 toponym_longitude, toponym_latitude = toponym_coordinates.split(" ")
                 await context.bot.send_photo(chat_id=update.message.chat_id,
-                                             photo='http://static-maps.yandex.ru/1.x/?'
-                                                   'll={toponym_latitude},{toponym_latitude}')
+                                             photo=f'http://static-maps.yandex.ru/1.x/?'
+                                                   f'll={toponym_latitude},{toponym_latitude}&l=map')
         await update.message.reply_text("Выберите тип", reply_markup=keyboard_type)
         return "typeEvent"
     elif update.message.text.lower() == 'прошедшее':
