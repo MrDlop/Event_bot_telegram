@@ -223,10 +223,16 @@ async def setEvent_type(update, context):
 async def setEvent_date(update, context):
     try:
         message = update.message.text.split('-')
-        date_start = datetime.date(*list(map(int, message[0].split('.')))[::-1])
-        date_end = datetime.date(*list(map(int, message[1].split('.')))[::-1])
+        date_start = datetime.datetime(*list(map(int, message[0].split('.')))[::-1])
+        date_end = datetime.datetime(*list(map(int, message[1].split('.')))[::-1])
         context.user_data['event'].date_start = date_start
         context.user_data['event'].date_end = date_end
+        print(context.user_data['event'].date_start)
+        print(context.user_data['event'].date_start > datetime.datetime.now())
+        if context.user_data['event'].date_start > datetime.datetime.now():
+            context.user_data['event'].status = 0
+        else:
+            context.user_data['event'].status = 1
         await update.message.reply_text("Введите ссылку на мероприятие")
         return "setEvent_link"
     except:
@@ -250,6 +256,7 @@ async def setEvent_description(update, context):
     context.user_data['event'].description = update.message.text
     db_sess = db_session.create_session()
     db_sess.add(context.user_data['event'])
+    db_sess.commit()
     db_sess.close()
     return ConversationHandler.END
 
@@ -325,10 +332,10 @@ async def typeEvent(update, context):
                     "featureMember"][0]["GeoObject"]
                 toponym_coordinates = toponym["Point"]["pos"]
 
-                toponym_longitude, toponym_latitude = toponym_coordinates.split(" ")
+                toponym_latitude, toponym_longitude = toponym_coordinates.split(" ")
                 await context.bot.send_photo(chat_id=update.message.chat_id,
                                              photo=f'http://static-maps.yandex.ru/1.x/?'
-                                                   f'll={toponym_latitude},{toponym_latitude}&l=map')
+                                                   f'll={toponym_latitude},{toponym_longitude}&l=map')
         await update.message.reply_text("Выберите тип", reply_markup=keyboard_type)
         return "typeEvent"
     elif update.message.text.lower() == 'прошедшее':
